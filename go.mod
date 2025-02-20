@@ -1,4 +1,4 @@
-module go_rabbitmq
+module github.com/bariscan97/go-rabbitmq
 
 go 1.22.4
 
