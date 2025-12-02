@@ -1,120 +1,250 @@
-# go-rabbitmq
+# Go RabbitMQ Examples
 
-A **minimal, idiomatic Go wrapper** around the official [`amqp091-go`](https://github.com/rabbitmq/amqp091-go) client that makes it trivial to publish and consume events through RabbitMQ topic exchanges.\
-The goal is to offer just enough abstraction to cover the 80 % use-case—**no reconnection loops, pooling, or opinionated frameworks—just plain Go interfaces** you can embed anywhere.
+Professional examples demonstrating various RabbitMQ patterns in Go. This project includes a robust event library and multiple examples showcasing different messaging patterns.
 
----
+## 🚀 Features
 
-## ✨ Features
+- **Robust Connection Management**: Auto-reconnect logic with graceful shutdown
+- **Publisher Confirms**: Reliable message publishing with acknowledgments
+- **Manual Acknowledgments**: Consumer-side message handling with Ack/Nack
+- **Multiple Patterns**: Pub/Sub, Routing, Topics, and RPC examples
+- **Professional Code**: Clean architecture, error handling, and logging
 
-| Feature                                    | Notes                                                                                                 |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| **Tiny API surface**                       | Two public helpers—`Emitter` and `Consumer`—expose exactly the methods you need: `Push` and `Listen`. |
-| **Topic exchange out-of-the-box**          | Exchange name is hard-coded to `logs_topic`, declared automatically on first use.                     |
-| **Random, exclusive queues for consumers** | Every `Consumer` gets a fresh, auto-deleted queue, perfect for fan-out pub/sub.                       |
-| **100 % Go**                               | Only dependency is `github.com/rabbitmq/amqp091-go v1.10.0`.                                          |
-| **Example CLIs & unit tests included**     | Ready-to-run `emitter/` and `consumer/` binaries plus table-driven tests.                             |
+## 📋 Prerequisites
 
----
+- Go 1.21 or higher
+- Docker and Docker Compose (for RabbitMQ)
+- RabbitMQ server (via Docker or local installation)
 
-## 🚀 Quick Start
+## 🛠️ Installation
 
-### 1. Prerequisites
-
-- **Go ≥ 1.22** (see `go.mod`)
-- **RabbitMQ 3.13+** running locally or in Docker:
-
+1. Clone the repository:
 ```bash
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+git clone https://github.com/bariscan97/go-rabbitmq.git
+cd go-rabbitmq
 ```
 
-### 2. Installation
-
+2. Install dependencies:
 ```bash
-go get github.com/bariscan97/go-rabbitmq
+go mod tidy
 ```
 
-(You’ll import `github.com/bariscan97/go-rabbitmq/event` in your code.)
-
----
-
-## 🛠️ Usage
-
-### Publish events
-
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-
-    "github.com/bariscan97/go-rabbitmq/event"
-    amqp "github.com/rabbitmq/amqp091-go"
-)
-
-func main() {
-    conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672")
-    defer conn.Close()
-
-    emitter, _ := event.NewEventEmitter(conn)
-    for i := 1; i <= 10; i++ {
-        if err := emitter.Push(
-            fmt.Sprintf("[%d] – hello world", i),
-            "INFO",
-        ); err != nil {
-            log.Fatal(err)
-        }
-    }
-}
-```
-
-### Consume events
-
-```go
-package main
-
-import (
-    "github.com/bariscan97/go-rabbitmq/event"
-    amqp "github.com/rabbitmq/amqp091-go"
-)
-
-func main() {
-    conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672")
-    defer conn.Close()
-
-    consumer, _ := event.NewConsumer(conn)
-    // Listen to multiple severities
-    consumer.Listen([]string{"INFO", "ERROR"})
-}
-```
-
-### CLI demos
-
+3. Start RabbitMQ using Docker:
 ```bash
-# one terminal
-go run consumer/main.go "INFO"
-
-# second terminal
-go run emitter/main.go  "INFO"
+docker-compose up -d
 ```
 
-Watch the consumer terminal receive and print each message.
+4. Access RabbitMQ Management UI:
+- URL: http://localhost:15672
+- Username: `guest`
+- Password: `guest`
 
----
-
-## 🗂 Project layout
+## 📚 Project Structure
 
 ```
 go-rabbitmq/
-├── event/          # Library code (Emitter, Consumer, helpers)
-│   ├── emitter.go
-│   ├── consumer.go
-│   ├── event.go
-│   └── event_test.go
-├── emitter/        # Example publisher CLI
-│   └── sender.go
-├── consumer/       # Example subscriber CLI
-│   └── consumer.go
-└── go.mod
+├── event/                    # Core RabbitMQ library
+│   ├── connection.go        # Connection manager with auto-reconnect
+│   ├── producer.go          # Generic producer with Publisher Confirms
+│   └── consumer.go          # Generic consumer with manual Ack/Nack
+├── examples/
+│   ├── pubsub/              # Publish/Subscribe (Fanout) pattern
+│   │   ├── emit_log.go
+│   │   └── receive_logs.go
+│   ├── routing/             # Routing (Direct) pattern
+│   │   ├── emit_log_direct.go
+│   │   └── receive_logs_direct.go
+│   ├── topics/              # Topics pattern
+│   │   ├── emit_log_topic.go
+│   │   └── receive_logs_topic.go
+│   └── rpc/                 # RPC (Request/Reply) pattern
+│       ├── rpc_server.go
+│       └── rpc_client.go
+├── docker-compose.yml       # RabbitMQ Docker configuration
+├── go.mod
+└── README.md
 ```
+
+## 🎯 Examples
+
+### 1. Publish/Subscribe (Fanout Exchange)
+
+**Pattern**: All consumers receive all messages (broadcasting).
+
+**Start receivers** (in separate terminals):
+```bash
+go run examples/pubsub/receive_logs.go
+go run examples/pubsub/receive_logs.go
+```
+
+**Send messages**:
+```bash
+go run examples/pubsub/emit_log.go "Hello, World!"
+go run examples/pubsub/emit_log.go "This is a broadcast message"
+```
+
+### 2. Routing (Direct Exchange)
+
+**Pattern**: Messages are routed based on exact routing key matches.
+
+**Start receivers**:
+```bash
+# Terminal 1: Listen for error messages only
+go run examples/routing/receive_logs_direct.go error
+
+# Terminal 2: Listen for info and warning messages
+go run examples/routing/receive_logs_direct.go info warning
+```
+
+**Send messages**:
+```bash
+go run examples/routing/emit_log_direct.go error "Error occurred!"
+go run examples/routing/emit_log_direct.go info "Just an info message"
+go run examples/routing/emit_log_direct.go warning "Warning: disk space low"
+```
+
+### 3. Topics (Topic Exchange)
+
+**Pattern**: Messages are routed based on wildcard patterns.
+
+**Routing key format**: `<source>.<severity>`
+
+**Start receivers**:
+```bash
+# Terminal 1: Receive all kernel messages
+go run examples/topics/receive_logs_topic.go "kern.*"
+
+# Terminal 2: Receive all critical messages from any source
+go run examples/topics/receive_logs_topic.go "*.critical"
+
+# Terminal 3: Receive all messages
+go run examples/topics/receive_logs_topic.go "#"
+```
+
+**Send messages**:
+```bash
+go run examples/topics/emit_log_topic.go "kern.critical" "A critical kernel error!"
+go run examples/topics/emit_log_topic.go "kern.info" "Kernel info message"
+go run examples/topics/emit_log_topic.go "user.critical" "Critical user error"
+```
+
+### 4. RPC (Request/Reply)
+
+**Pattern**: Client sends a request and waits for a response.
+
+**Start the RPC server**:
+```bash
+go run examples/rpc/rpc_server.go
+```
+
+**Make RPC calls** (in separate terminal):
+```bash
+go run examples/rpc/rpc_client.go 10
+go run examples/rpc/rpc_client.go 30
+```
+
+The server computes the Fibonacci number and returns the result.
+
+## 🔧 Event Library API
+
+### Connection
+
+```go
+conn := event.NewConnection("amqp://guest:guest@localhost:5672")
+defer conn.Close()
+```
+
+### Producer
+
+```go
+producer := event.NewProducer(conn)
+err := producer.Publish("exchange_name", "routing_key", []byte("message"))
+```
+
+### Consumer
+
+```go
+consumer := event.NewConsumer(conn)
+err := consumer.Listen("exchange_name", "exchange_type", "queue_name", "routing_key", 
+    func(body []byte) error {
+        log.Printf("Received: %s", body)
+        return nil
+    })
+```
+
+### Exchange Types
+
+- `fanout`: Broadcasts to all bound queues
+- `direct`: Routes based on exact routing key
+- `topic`: Routes based on pattern matching
+- `headers`: Routes based on message headers
+
+## 🎨 Features
+
+### Connection Manager
+- Automatic reconnection on connection failures
+- Graceful shutdown support
+- Connection health monitoring
+
+### Producer
+- Publisher Confirms for reliable delivery
+- Timeout handling
+- Persistent message delivery
+
+### Consumer
+- Manual acknowledgments (Ack/Nack)
+- Error handling with requeue support
+- QoS (prefetch) support
+
+## 📖 RabbitMQ Concepts
+
+### Exchanges
+- **Fanout**: Routes messages to all bound queues (Pub/Sub)
+- **Direct**: Routes based on exact routing key match (Routing)
+- **Topic**: Routes based on wildcard patterns (Topics)
+- **Headers**: Routes based on message headers
+
+### Queues
+- Store messages until consumed
+- Can be durable or transient
+- Can be exclusive to a connection
+
+### Bindings
+- Link exchanges to queues with routing keys
+- Define message routing rules
+
+## 🧪 Testing
+
+To test the examples, ensure RabbitMQ is running and execute the commands in the Examples section.
+
+Monitor the RabbitMQ Management UI to see:
+- Connections and channels
+- Exchanges and their types
+- Queues and their messages
+- Message rates
+
+## 🐛 Troubleshooting
+
+**Docker fails to start**:
+- Ensure Docker Desktop is running
+- Check if port 5672 and 15672 are available
+
+**Connection errors**:
+- Verify RabbitMQ is running: `docker ps`
+- Check RabbitMQ logs: `docker logs rabbitmq`
+
+**Messages not received**:
+- Ensure consumers are started before sending messages
+- Check exchange and queue bindings in Management UI
+
+## 📝 License
+
+MIT License
+
+## 👤 Author
+
+[Barış Can](https://github.com/bariscan97)
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!

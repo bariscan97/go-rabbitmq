@@ -1,76 +1,96 @@
 package event
 
 import (
+	"context"
 	"log"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Consumer struct {
-	conn      *amqp.Connection
-	queueName string
+	conn *Connection
 }
 
-func (consumer *Consumer) setup() error {
-	
-	channel, err := consumer.conn.Channel()
-	if err != nil {
-		return err
-	}
-	return declareExchange(channel)
-}
+type Handler func(body []byte) error
 
-func NewConsumer(conn *amqp.Connection) (Consumer, error) {
-	consumer := Consumer{
+func NewConsumer(conn *Connection) *Consumer {
+	return &Consumer{
 		conn: conn,
 	}
-	err := consumer.setup()
-	if err != nil {
-		return Consumer{}, err
-	}
-
-	return consumer, nil
 }
 
-func (consumer *Consumer) Listen(topics []string) error {
-	ch, err := consumer.conn.Channel()
+func (c *Consumer) Listen(ctx context.Context, exchange, exchangeType, queueName, routingKey string, handler Handler) error {
+	ch, err := c.conn.GetConnection().Channel()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
 
-	q, err := declareRandomQueue(ch)
-	if err != nil {
-		return err
-	}
-
-	for _, s := range topics {
-		err = ch.QueueBind(
-			q.Name,
-			s,
-			getExchangeName(),
-			false,
-			nil,
+	if exchange != "" {
+		err = ch.ExchangeDeclare(
+			exchange,
+			exchangeType,
+			true,  // durable
+			false, // auto-deleted
+			false, // internal
+			false, // no-wait
+			nil,   // arguments
 		)
-
 		if err != nil {
 			return err
 		}
 	}
 
-	msgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
+	q, err := ch.QueueDeclare(
+		queueName,
+		false, // durable 
+		false, // delete 
+		queueName == "",  // exclusive 
+		false, // no-wait
+		nil,   // arguments
+	)
 	if err != nil {
 		return err
 	}
 
-	forever := make(chan bool)
+	if exchange != "" {
+		err = ch.QueueBind(
+			q.Name,
+			routingKey,
+			exchange,
+			false,
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	msgs, err := ch.Consume(
+		q.Name,
+		"",    // consumer tag
+		false, // auto-ack 
+		false, // exclusive
+		false, // no-local
+		false, // no-wait
+		nil,   // args
+	)
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
+			if err := handler(d.Body); err != nil {
+				log.Printf("Error handling message: %v", err)
+				d.Nack(false, true)
+			} else {
+				d.Ack(false)
+			}
 		}
 	}()
 
-	log.Printf("[*] Waiting for message [Exchange, Queue][%s, %s]. To exit press CTRL+C", getExchangeName(), q.Name)
-	<-forever
+	log.Printf(" [*] Waiting for messages in %s. To exit press CTRL+C", q.Name)
+	<-ctx.Done()
+
 	return nil
 }
