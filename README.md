@@ -236,15 +236,3 @@ Monitor the RabbitMQ Management UI to see:
 **Messages not received**:
 - Ensure consumers are started before sending messages
 - Check exchange and queue bindings in Management UI
-
-## 📝 License
-
-MIT License
-
-## 👤 Author
-
-[Barış Can](https://github.com/bariscan97)
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
